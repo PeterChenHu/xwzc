@@ -1,35 +1,34 @@
-#!/usr/bin/env python3   
+#!/usr/bin/env python3
 import serial
 import time
 import requests
 import threading
-ser = serial.Serial('/dev/ttyAMA0', baudrate=9600, timeout=1)
-backend_url = 'https://api.xiwuzc.tech/iot/iot/sensing/sensor/data'
-buffer = ''
-payload = None
-lock = threading.Lock()
-last_send_time = time.time()
+import logging
+
+SERIAL_PORT = '/dev/ttyAMA0'
+BAUDRATE = 9600
+TIMEOUT = 1
+BACKEND_URL = 'https://api.xiwuzc.tech/iot/iot/sensing/sensor/data'
+PACKET_HEADER = "3c02"
+PACKET_SIZE = 32
+SEND_INTERVAL = 10  # seconds
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
+
 def send_data_to_backend(payload):
     try:
-        headers = {
-            'Content-Type': 'application/json',
-        }
-        response = requests.post(backend_url, json=payload, headers=headers)
+        headers = {'Content-Type': 'application/json'}
+        response = requests.post(BACKEND_URL, json=payload, headers=headers)
         response.raise_for_status()
-        print(f'Success: {response.status_code}, Data sent: {payload}')
+        logging.info(f'Success: {response.status_code}, Data sent: {payload}')
     except requests.exceptions.RequestException as e:
-        print(f'HTTP Request failed: {e}')
+        logging.error(f'HTTP Request failed: {e}')
+
 def process_data(line):
-    global buffer
     hex_str = line.hex()
-    print(f"Received hex string: {hex_str}, size: {len(hex_str)}")
-    buffer += hex_str
-    print(f'Current Buffer: {buffer}, buffer size {len(buffer)}')
-    if len(buffer) >= 32 and buffer.startswith("3c02"):
-        pairs = [buffer[i:i + 2] for i in range(0, 32, 2)]
-        #print(f'Pairs: {pairs}')
-        buffer = ''
-        print(f'clean up buffer.... size: {len(buffer)}')
+    logging.debug(f"Received hex string: {hex_str}, size: {len(hex_str)}")
+    if len(hex_str) >= PACKET_SIZE and hex_str.startswith(PACKET_HEADER):
+        pairs = [hex_str[i:i + 2] for i in range(0, PACKET_SIZE, 2)]
         try:
             co2 = int(pairs[2] + pairs[3], 16)
             ch2o = int(pairs[4] + pairs[5], 16)
@@ -40,39 +39,46 @@ def process_data(line):
             temp_low = int(pairs[13], 16)
             humidity_high = int(pairs[14], 16)
             humidity_low = int(pairs[15], 16)
-            double_humid = float(f'{humidity_high}.{humidity_low}')
             payload = {
-                'CO2': f'{co2}',
-                'Ch2O': f'{ch2o}',
-                'TVOC': f'{tvoc}',
-                'PM25': f'{pm25}',
-                'PM10': f'{pm10}',
+                'CO2': str(co2),
+                'Ch2O': str(ch2o),
+                'TVOC': str(tvoc),
+                'PM25': str(pm25),
+                'PM10': str(pm10),
                 'Temperature': f'{temp_high}.{temp_low}',
                 'Humidity': f'{humidity_high}.{humidity_low}'
             }
-            print(payload)
-            
+            logging.info(payload)
             return payload
         except ValueError as ve:
-            print(f'ValueError: {ve} while processing pairs: {pairs}')
+            logging.error(f'ValueError: {ve} while processing pairs: {pairs}')
     return None
-try:
-    while True:
-        if ser.in_waiting > 0:
-            line = ser.readline().strip()
-            if line:
-                payload = process_data(line)
-                if payload is not None:
-                    if time.time() - last_send_time >= 300:
-                        with lock:
-                            print('sending gas data to server...')
-                            thread = threading.Thread(target=send_data_to_backend, args=(payload,))
-                            thread.start()
+
+def main():
+    try:
+        ser = serial.Serial(SERIAL_PORT, baudrate=BAUDRATE, timeout=TIMEOUT)
+        last_send_time = time.time()
+        while True:
+            if ser.in_waiting > 0:
+                line = ser.readline().strip()
+                if line:
+                    payload = process_data(line)
+                    if payload and (time.time() - last_send_time >= SEND_INTERVAL):
+                        logging.info('Sending gas data to server...')
+                        thread = threading.Thread(target=send_data_to_backend, args=(payload,))
+                        thread.start()
                         last_send_time = time.time()
-                        
-        else:
-            time.sleep(0.2)
-except KeyboardInterrupt:
-    print("Exiting program")
-finally:
-    ser.close()
+            else:
+                time.sleep(0.3)
+    except serial.SerialException as e:
+        logging.error(f"Serial error: {e}")
+    except KeyboardInterrupt:
+        logging.info("Exiting program")
+    finally:
+        try:
+            ser.close()
+        except Exception:
+            pass
+
+if __name__ == "__main__":
+    main()
