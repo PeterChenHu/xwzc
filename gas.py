@@ -15,6 +15,7 @@ PACKET_HEADER = "3c02"
 PACKET_SIZE = 32
 TENANT_ID = 10002
 COWSHED_NUMBER = 4
+DEVICE_NUM = 2
 SEND_INTERVAL = 10  # seconds
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
@@ -62,7 +63,7 @@ def process_data(line):
                 'Humidity': f'{humidity_high}.{humidity_low}',
                 'tenantId': TENANT_ID,
                 'cowshedNumber': COWSHED_NUMBER,
-                'devCode': f'{hash_mac_address(get_mac_address())}'
+                'devCode': f'{hash_mac_address(get_mac_address())}_{DEVICE_NUM}',
             }
             logging.info(payload)
             return payload

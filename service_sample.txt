@@ -1,0 +1,9 @@
+[Unit]
+Description=RTSP Streamer %i
+After=network.target
+[Service]
+User=<your_username>
+ExecStart=/bin/bash -c "/path/to/your/script.sh %i"
+Restart=always
+[Install]
+WantedBy=multi-user.target
