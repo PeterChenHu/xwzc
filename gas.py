@@ -4,6 +4,8 @@ import time
 import requests
 import threading
 import logging
+import hashlib
+import uuid
 
 SERIAL_PORT = '/dev/ttyAMA0'
 BAUDRATE = 9600
@@ -11,9 +13,20 @@ TIMEOUT = 1
 BACKEND_URL = 'https://api.xiwuzc.tech/iot/iot/sensing/sensor/data'
 PACKET_HEADER = "3c02"
 PACKET_SIZE = 32
+TENANT_ID = 10002
+COWSHED_NUMBER = 4
 SEND_INTERVAL = 10  # seconds
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
+
+def get_mac_address():
+    mac = uuid.getnode()
+    mac_str = f"{mac:012x}"
+    return ':'.join(mac_str[i:i + 2] for i in range(0, len(mac_str), 2))
+
+def hash_mac_address(mac_address):
+    hash_object = hashlib.sha1(mac_address.encode())
+    return hash_object.hexdigest()
 
 def send_data_to_backend(payload):
     try:
@@ -46,7 +59,10 @@ def process_data(line):
                 'PM25': str(pm25),
                 'PM10': str(pm10),
                 'Temperature': f'{temp_high}.{temp_low}',
-                'Humidity': f'{humidity_high}.{humidity_low}'
+                'Humidity': f'{humidity_high}.{humidity_low}',
+                'tenantId': TENANT_ID,
+                'cowshedNumber': COWSHED_NUMBER,
+                'devCode': f'{hash_mac_address(get_mac_address())}'
             }
             logging.info(payload)
             return payload
@@ -82,3 +98,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # print(f"MAC Address: {hash_mac_address(get_mac_address())}")
